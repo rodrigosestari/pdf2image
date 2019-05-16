@@ -50,6 +50,6 @@ setup(
 
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
     install_requires=[
-        'pillow',
+        'pillow','PyPDF2'
     ]
 )

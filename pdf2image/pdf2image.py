@@ -5,24 +5,21 @@
 
 import os
 import platform
-import re
-import uuid
-import tempfile
 import shutil
-
+import tempfile
+import uuid
 from subprocess import Popen, PIPE
-from PIL import Image
 
+from PIL import Image
+from PyPDF2 import PdfFileReader
+
+from .exceptions import (
+    PDFSyntaxError
+)
 from .parsers import (
     parse_buffer_to_ppm,
     parse_buffer_to_jpeg,
     parse_buffer_to_png
-)
-
-from .exceptions import (
-    PDFInfoNotInstalledError,
-    PDFPageCountError,
-    PDFSyntaxError
 )
 
 TRANSPARENT_FILE_TYPES = ['png', 'tiff']
@@ -50,7 +47,10 @@ def convert_from_path(pdf_path, dpi=200, output_folder=None, first_page=None, la
 
     """
 
-    page_count = _page_count(pdf_path, userpw, poppler_path=poppler_path)
+    with open(pdf_path, 'rb') as file:
+        _pdf = PdfFileReader(file)
+        page_count = _pdf.getNumPages()
+        file.close()
 
     # We start by getting the output format, the buffer processing function and if we need pdftocairo
     parsed_fmt, parse_buffer_func, use_pdfcairo_format = _parse_format(fmt)
@@ -85,11 +85,13 @@ def convert_from_path(pdf_path, dpi=200, output_folder=None, first_page=None, la
     current_page = first_page
     processes = []
     for i in range(thread_count):
-        thread_output_file = output_file + '_' + str(i) if thread_count > 1 else output_file 
+        thread_output_file = output_file + '_' + str(i) if thread_count > 1 else output_file
         # Get the number of pages the thread will be processing
         thread_page_count = page_count // thread_count + int(reminder > 0)
         # Build the command accordingly
-        args = _build_command(['-r', str(dpi), pdf_path], output_folder, current_page, current_page + thread_page_count - 1, parsed_fmt, thread_output_file, userpw, use_cropbox, transparent)
+        args = _build_command(['-r', str(dpi), pdf_path], output_folder, current_page,
+                              current_page + thread_page_count - 1, parsed_fmt, thread_output_file, userpw, use_cropbox,
+                              transparent)
 
         if use_pdfcairo:
             args = [_get_command_path('pdftocairo', poppler_path)] + args
@@ -111,7 +113,7 @@ def convert_from_path(pdf_path, dpi=200, output_folder=None, first_page=None, la
     for uid, proc in processes:
         data, err = proc.communicate()
 
-        if b'Syntax Error'in err and strict:
+        if b'Syntax Error' in err and strict:
             raise PDFSyntaxError(err.decode("utf8", "ignore"))
 
         if output_folder is not None:
@@ -208,30 +210,6 @@ def _get_command_path(command, poppler_path=None):
         command = os.path.join(poppler_path, command)
 
     return command
-
-
-def _page_count(pdf_path, userpw=None, poppler_path=None):
-    try:
-        command = [_get_command_path("pdfinfo", poppler_path), pdf_path]
-
-        if userpw is not None:
-            command.extend(['-upw', userpw])
-
-        # Add poppler path to LD_LIBRARY_PATH
-        env = os.environ.copy()
-        if poppler_path is not None:
-            env["LD_LIBRARY_PATH"] = poppler_path + ":" + env.get("LD_LIBRARY_PATH", "")
-        proc = Popen(command, env=env, stdout=PIPE, stderr=PIPE)
-
-        out, err = proc.communicate()
-    except:
-        raise PDFInfoNotInstalledError('Unable to get page count. Is poppler installed and in PATH?')
-
-    try:
-        # This will throw if we are unable to get page count
-        return int(re.search(r'Pages:\s+(\d+)', out.decode("utf8", "ignore")).group(1))
-    except:
-        raise PDFPageCountError('Unable to get page count. %s' % err.decode("utf8", "ignore"))
 
 
 def _load_from_output_folder(output_folder, output_file, in_memory=False):

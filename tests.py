@@ -20,7 +20,7 @@ except ImportError:
         def __exit__(self, exc, value, tb):
             shutil.rmtree(self.name)
 
-from memory_profiler import profile as profile_memory
+
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -33,7 +33,6 @@ from pdf2image.exceptions import (
 
 from functools import wraps
 
-PROFILE_MEMORY = False
 
 try:
     subprocess.call(["pdfinfo", "-h"], stdout=open(os.devnull, 'w'), stderr=open(os.devnull, 'w'))
@@ -43,19 +42,12 @@ except OSError as e:
         POPPLER_INSTALLED = False
 
 def profile(f):
-    if PROFILE_MEMORY:
-        @wraps(f)
-        @profile_memory
-        def wrapped(*args, **kwargs):
-            r = f(*args, **kwargs)
-            return r
-        return wrapped
-    else:
-        @wraps(f)
-        def wrapped(*args, **kwargs):
-            r = f(*args, **kwargs)
-            return r
-        return wrapped
+
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        r = f(*args, **kwargs)
+        return r
+    return wrapped
 
 class PDFConversionMethods(unittest.TestCase):
     @profile
